@@ -2,9 +2,9 @@
     "meta": {
         "name": "TA-ms-loganalytics",
         "displayName": "ms-loganalytics",
-        "version": "2",
-        "apiVersion": "3.0.0",
-        "restRoot": "TA_ms_loganalytics"
+        "version": "0.0.0RNone",
+        "restRoot": "TA_ms_loganalytics",
+        "schemaVersion": "0.0.3"
     },
     "pages": {
         "configuration": {
@@ -179,8 +179,8 @@
                             "defaultValue": "default",
                             "options": {
                                 "endpointUrl": "data/indexes",
-                                "blackList": "^_.*$",
-                                "createSearchChoice": true
+                                "createSearchChoice": true,
+                                "denyList": "^_.*$"
                             },
                             "required": true,
                             "validators": [

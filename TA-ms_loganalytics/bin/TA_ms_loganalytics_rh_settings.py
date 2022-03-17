@@ -8,7 +8,8 @@ from splunktaucclib.rest_handler.endpoint import (
     MultipleModel,
 )
 from splunktaucclib.rest_handler import admin_external, util
-from splunk_aoblib.rest_migration import ConfigMigrationHandler
+from splunktaucclib.rest_handler.admin_external import AdminExternalHandler
+import logging
 
 util.remove_http_proxy_env_vars()
 
@@ -34,7 +35,8 @@ endpoint = MultipleModel(
 
 
 if __name__ == '__main__':
+    logging.getLogger().addHandler(logging.NullHandler())
     admin_external.handle(
         endpoint,
-        handler=ConfigMigrationHandler,
+        handler=AdminExternalHandler,
     )

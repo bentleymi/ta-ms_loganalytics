@@ -1,31 +1,40 @@
-
 # encoding = utf-8
 
-import adal
+import sys
 import datetime
 import json
-import os
-import sys
-import time
 import requests
 from splunklib.modularinput import *
-'''
-    IMPORTANT
-    Edit only the validate_input and collect_events functions.
-    Do not edit any other part in this file.
-    This file is generated only once when creating the modular input.
-'''
-'''
-# For advanced users, if you want to create single instance mod input, uncomment this method.
-def use_single_instance_mode():
-    return True
-'''
 
+API_URL = "https://api.loganalytics.io"
+
+def authenticate(helper, tenant_id, application_id, application_key):
+	login_url = "https://login.microsoftonline.com/{}/oauth2/token".format(tenant_id)
+
+	payload = {
+		"grant_type": "client_credentials",
+		"client_id": application_id,
+		"client_secret": application_key,
+		"resource": API_URL
+	}
+	headers = {"content-type": "application/x-www-form-urlencoded"}
+
+	response = requests.post(login_url, data=payload, headers=headers)
+
+	try:
+		response.raise_for_status()
+		resp = response.json()
+		acess_token = resp["access_token"]
+	except Exception as err:
+		helper.log_error("Could not retrive access token: {}".format(err))
+		sys.exit(1)
+
+	return acess_token
 
 
 def validate_input(helper, definition):
 	inputs=helper.get_input_stanza()
-	for input_name, input_item in inputs.iteritems():
+	for input_name, input_item in inputs.items():
 		start_date = str(input_item["start_date"])
 		try:
 			valid_date = datetime.datetime.strptime(start_date, '%d/%m/%Y %H:%M:%S')
@@ -54,14 +63,8 @@ def collect_events(helper, ew):
 		now = datetime.datetime.utcnow() - datetime.timedelta(minutes=event_lag)
 		now_dt = now.replace(microsecond=0)
 
-		# URLs for authentication
-		authentication_endpoint = 'https://login.microsoftonline.com/'
-		resource  = 'https://api.loganalytics.io/'
-
 		# Get access token
-		context = adal.AuthenticationContext('https://login.microsoftonline.com/' + tenant_id)
-		token_response = context.acquire_token_with_client_credentials('https://api.loganalytics.io/', application_id, application_key)
-		access_token = token_response.get('accessToken')
+		access_token = authenticate(helper, tenant_id, application_id, application_key)
 
 		# Add token to header
 		headers = {
@@ -70,11 +73,7 @@ def collect_events(helper, ew):
 		}
 
 		# URLs for retrieving data
-		uri_base = 'https://api.loganalytics.io/'
-		uri_api = 'v1/'
-		uri_workspace = 'workspaces/' + workspace + '/'
-		uri_area = "query"
-		uri = uri_base + uri_api + uri_workspace + uri_area
+		uri = "{}/v1/workspaces/{}/query".format(API_URL, workspace)
 
 		# Build search parameters from query details
 		search_params = {
@@ -83,7 +82,8 @@ def collect_events(helper, ew):
 		}
 
 		# Send post request
-		response = requests.post(uri,json=search_params,headers=headers)
+		response = requests.post(uri, json=search_params, headers=headers)
+		response.raise_for_status()
 
 		# Response of 200 if successful
 		if response.status_code == 200:
@@ -97,23 +97,25 @@ def collect_events(helper, ew):
 			
 		#Building proper json format from original request
 		#First loop checks how many events returned is in response
-		for i in range(len(data["tables"][0]["rows"])):
-			data1 = "{"
-			#This nested loop goes through each field, in each event, and concatenates the field name to the field value
-			for n in range(len(data["tables"][0]["rows"][i])):
-				field = str(data["tables"][0]["columns"][n]["name"])
-				value = str(data["tables"][0]["rows"][i][n]).replace('"',"'").replace("\\", "\\\\").replace("None", "").replace("\r\n","")
-				if value == "":
-					continue
-				else:
-					data1 += '"%s":"%s",' % (field, value)
-			data1 += "}"
-			data1 = data1.replace(",}", "}")
-			event = Event()
-			event.stanza = input_name
-			event.data = data1
+		
+		rows = []
+		for row in data["tables"][0]["rows"]:
+			row_data = {}
+			for i, entry in enumerate(row):
+				col_name = data["tables"][0]["columns"][i]["name"]
+				col_value = entry
+				row_data[col_name] = col_value
+			rows.append(row_data)
+
+		for row in rows:
+			event = helper.new_event(
+				source=helper.get_input_type(), 
+				index=helper.get_output_index(),
+				sourcetype="loganalytics",
+				data=json.dumps(row)
+			)
 			ew.write_event(event)
-			
+
 		#Delta
 		state = now_dt.strftime("%d/%m/%Y %H:%M:%S")
 		helper.save_check_point(input_name, state)    
